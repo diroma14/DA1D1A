@@ -1,4 +1,4 @@
-public class calcular_salario {
+public class calcularsalario {
     public static void calcularSalario(String localidad, int añosContrato) {
         double salario;
         double pVidaComunidad;

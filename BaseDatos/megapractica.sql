@@ -115,9 +115,6 @@ BEGIN
                 INSERT INTO personal(id, nombre, telefono, fecha_nacimiento, cp, fecha_contratacion, salario_bruto_anual, dpto_code, puesto)
                 VALUES(dni, nombre_emp, telefono_emp, nacimiento, codigo_postal, NOW(), salario_emp, departamento, cargo);
 
-                -- Insertar contrato
-                INSERT INTO contratos(fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
-                VALUES(NOW(), dni, NULL, departamento, NULL, cargo, NULL, salario_emp);
             END IF;
         END IF;
     END IF;
@@ -125,6 +122,7 @@ BEGIN
 END$$
 
 DELIMITER ;
+
 
 --Pruebas que funcionan
 CALL contratar('Son Goku', '77722032H', 'Almeria', '1986-04-16', 987654321, 'comer', 'Embajador de los Guerreros Z');
@@ -142,7 +140,7 @@ CALL contratar('Yugi Muto', '26299110J', 'Oviedo', '1995-02-04', 620987654, 'Its
 
 -------------------------------------------------------------------------------------------------------
 
-------------------------------------  Contratar -------------------------------------------------------
+------------------------------------  Despedir -------------------------------------------------------
 
 DELIMITER $$
 
@@ -180,24 +178,14 @@ BEGIN
             UPDATE personal
             SET fecha_despido = NOW(), salario_bruto_anual = 0, dpto_code = NULL, puesto = NULL
             WHERE id = dni COLLATE utf8mb4_unicode_ci;
-
-            /* Actualizar los contratos */
-            UPDATE contratos
-            SET fecha = NOW(), 
-                dpto_origen = dpto_original, 
-                dpto_destino = NULL, 
-                puesto_origen = puesto_original, 
-                puesto_destino = NULL, 
-                salario_bruto_origen = salario_original, 
-                salario_bruto_destino = NULL
-            WHERE personal_id = dni COLLATE utf8mb4_unicode_ci;
         END IF;
     END IF;
 END$$
 
 DELIMITER ;
 
-CALL despedir('23456789B');
+
+CALL despedir('63416856Z');
 
 
 -------------------------------------------------------------------------------------------------------
@@ -210,14 +198,18 @@ CREATE OR REPLACE PROCEDURE cambiar(dni VARCHAR(9), puesto_nuevo VARCHAR(250), d
 BEGIN
     DECLARE existe_empleado VARCHAR(250) DEFAULT NULL;
     DECLARE existe_dpto VARCHAR(250) DEFAULT NULL;
-    DECLARE dpto_original VARCHAR(250);
-    DECLARE puesto_original VARCHAR(250);
 
     -- Verificar si existe el empleado
-    SELECT nombre INTO existe_empleado FROM personal WHERE id = dni COLLATE utf8mb4_unicode_ci;
-    
-    -- Verificar si existe el departamento
-    SELECT nombre INTO existe_dpto FROM dptos WHERE dpto_code = dpto_nuevo COLLATE utf8mb4_unicode_ci;
+    SELECT nombre INTO existe_empleado 
+    FROM personal 
+    WHERE id = dni COLLATE utf8mb4_unicode_ci 
+    LIMIT 1;
+
+    -- Verificar si existe el departamento 
+    SELECT nombre INTO existe_dpto 
+    FROM dptos 
+    WHERE dpto_code = dpto_nuevo COLLATE utf8mb4_unicode_ci 
+    LIMIT 1;
 
     -- Si el empleado no existe
     IF existe_empleado IS NULL THEN
@@ -241,52 +233,21 @@ BEGIN
 
     -- Si el departamento se cambia, se debe cambiar también el puesto
     IF dpto_nuevo IS NOT NULL THEN
-        -- Obtener el departamento y puesto original del contrato
-        SELECT dpto_destino, puesto_destino 
-        INTO dpto_original, puesto_original
-        FROM contratos 
-        WHERE personal_id = dni COLLATE utf8mb4_unicode_ci;
-
-        -- Si existe un departamento nuevo y puesto nuevo, se actualizan ambos
+        -- Si se cambia el departamento, actualizar el puesto también
         IF puesto_nuevo IS NOT NULL THEN
-            -- Actualizar contratos con el nuevo puesto y departamento
-            UPDATE contratos
-            SET fecha = NOW(),
-                dpto_origen = dpto_original, 
-                dpto_destino = dpto_nuevo, 
-                puesto_origen = puesto_original, 
-                puesto_destino = puesto_nuevo
-            WHERE personal_id = dni COLLATE utf8mb4_unicode_ci;
+            -- Actualizar la tabla personal con el nuevo puesto y departamento
+            UPDATE personal
+            SET puesto = puesto_nuevo, dpto_code = dpto_nuevo
+            WHERE id = dni COLLATE utf8mb4_unicode_ci;
         ELSE
             -- Si solo se cambia el departamento pero no el puesto
-            UPDATE contratos
-            SET fecha = NOW(),
-                dpto_origen = dpto_original, 
-                dpto_destino = dpto_nuevo
-            WHERE personal_id = dni COLLATE utf8mb4_unicode_ci;
+            UPDATE personal
+            SET dpto_code = dpto_nuevo
+            WHERE id = dni COLLATE utf8mb4_unicode_ci;
         END IF;
-
-        -- Actualizar la tabla personal
-        UPDATE personal
-        SET puesto = puesto_nuevo, dpto_code = dpto_nuevo
-        WHERE id = dni COLLATE utf8mb4_unicode_ci;
-
     ELSE
         -- Si solo se cambia el puesto pero no el departamento
         IF puesto_nuevo IS NOT NULL THEN
-            -- Obtener el puesto original del contrato
-            SELECT puesto_destino 
-            INTO puesto_original
-            FROM contratos 
-            WHERE personal_id = dni COLLATE utf8mb4_unicode_ci;
-
-            -- Actualizar contratos con el nuevo puesto
-            UPDATE contratos
-            SET fecha = NOW(),
-                puesto_origen = puesto_original, 
-                puesto_destino = puesto_nuevo
-            WHERE personal_id = dni COLLATE utf8mb4_unicode_ci;
-
             -- Actualizar solo la tabla personal para el puesto
             UPDATE personal
             SET puesto = puesto_nuevo
@@ -297,6 +258,8 @@ BEGIN
 END $$
 
 DELIMITER ;
+
+
 
 --Hay cuatro casos de error: 
 --Cuando no se especifica ni puesto ni departamento
@@ -310,9 +273,11 @@ CALL cambiar('09715974S', NULL, "infor");
 
 --Casos de prueba que funcionan:
 --Cambiar de puesto pero no de departamento
-CALL cambiar('29473783L', "Miembro del team rocket", NULL);
+CALL cambiar('29473783L', "Miembro del team rocket xd", NULL);
 --Cambiar de puesto y de departamento
-CALL cambiar('18917851Y', "Vendedor de frutas del diablo", "comer");
+CALL cambiar('18917851Y', "Youtuber", "infor");
+
+
 
 
 -------------------------------------------------------------------------------------------------------
@@ -425,7 +390,6 @@ BEGIN
         WHERE cp COLLATE utf8mb4_general_ci = localidad_emp COLLATE utf8mb4_general_ci
         LIMIT 1;
 
-
         -- Calcular los años contratados
         SET años_contratado = TIMESTAMPDIFF(YEAR, fecha_contratacion, NOW());
 
@@ -438,14 +402,6 @@ BEGIN
             fecha_ultima_actualizacion_salario = NOW()
         WHERE id = dni_emp;
 
-        -- Actualizar la tabla contratos
-        -- Primero, actualizamos salario_bruto_origen con el salario anterior (salario_actual)
-        UPDATE contratos
-        SET salario_bruto_origen = salario_actual, 
-            salario_bruto_destino = salario_nuevo
-        WHERE personal_id = dni_emp
-          AND fecha IS NULL; 
-
     END LOOP actualizar_salarios_loop;
 
     CLOSE empleados_cursor;
@@ -453,110 +409,120 @@ END $$
 
 DELIMITER ;
 
+
 CALL actualizar_salarios();
 
 -------------------------------------------------------------------------------------------------------
 
 ------------------------------------  Resumen  -------------------------------------------------------
-DELIMITER $$
 
-CREATE OR REPLACE FUNCTION resumen()
-RETURNS INT
-BEGIN
-    DECLARE done INT DEFAULT 0;
-    DECLARE dni_emp VARCHAR(9);
-    DECLARE fecha_contratacion DATE;
-    DECLARE fecha_despido DATE;
-    DECLARE salario_anterior DOUBLE(10,5);
-    DECLARE salario_actual DOUBLE(10,5);
-    DECLARE movimientos_dpto INT;
-    DECLARE movimientos_puesto INT;
-    DECLARE aumento_salarial VARCHAR(3);  -- 'Sí' o 'No'
-    DECLARE porcentaje_aumento DECIMAL(5,2);  -- Porcentaje de aumento salarial
-    DECLARE porcentaje_reduccion DECIMAL(5,2);  -- Porcentaje de reducción
-    DECLARE total_contratos INT;
-    DECLARE total_resumen INT;
 
-    -- Cursor
-    DECLARE empleados_cursor CURSOR FOR 
-        SELECT id, fecha_contratacion, fecha_despido
-        FROM personal;
 
-    -- Controlador para cuando no haya más empleados
-    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+-------------------------------------------------------------------------------------------------------
 
-    -- Crear la tabla temporal
-    CREATE TEMPORARY TABLE resumen (
-    id_empleado VARCHAR(9),
-    año INT,
-    aumento_salarial VARCHAR(3),
-    porcentaje_aumento DECIMAL(5,2),
-    movimientos_departamento INT,
-    movimientos_puesto INT,
-    porcentaje_reduccion DECIMAL(5,2)  
+------------------------------------  Triggers  -------------------------------------------------------
+--He creado una tabla logs
+CREATE OR REPLACE TABLE logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    mensaje VARCHAR(250) NOT NULL,
+    fecha TIMESTAMP DEFAULT NOW(),
+    campo_afectado VARCHAR(250),
+    dni VARCHAR(9)
 );
 
+DELIMITER $$
 
-    OPEN empleados_cursor;
+CREATE OR REPLACE TRIGGER tg_actualizar_personal
+    AFTER UPDATE ON personal
+    FOR EACH ROW
+BEGIN
+    DECLARE puesto_actualizado BOOLEAN DEFAULT FALSE;
+    DECLARE dpto_actualizado BOOLEAN DEFAULT FALSE;
+    DECLARE salario_actualizado BOOLEAN DEFAULT FALSE;
+    DECLARE mensaje_log VARCHAR(255);
+    DECLARE puesto_en_logs INT DEFAULT 0;
+    DECLARE salario_en_logs INT DEFAULT 0;
+    DECLARE dpto_en_logs INT DEFAULT 0;
 
-    resumen_loop: LOOP
-        FETCH empleados_cursor INTO dni_emp, fecha_contratacion, fecha_despido;
-        
-        -- Salir del bucle si no hay más empleados
-        IF done THEN
-            LEAVE resumen_loop;
-        END IF;
+    -- Verificar si ha cambiado el salario
+    IF OLD.salario_bruto_anual != NEW.salario_bruto_anual THEN
+        SET salario_actualizado = TRUE;
+    END IF;
 
-        SET salario_anterior = (SELECT salario_bruto_anual FROM personal WHERE id = dni_emp LIMIT 1);
-        SET salario_actual = salario_anterior;
-        SET movimientos_dpto = 0;
-        SET movimientos_puesto = 0;
+    -- Verificar si ha cambiado el puesto
+    IF OLD.puesto != NEW.puesto THEN
+        SET puesto_actualizado = TRUE;
+    END IF;
 
-        WHILE YEAR(fecha_contratacion) <= YEAR(NOW()) DO
-            -- Calcular si hay aumento salarial y el porcentaje de aumento
-            SET salario_actual = (SELECT salario_bruto_anual FROM personal WHERE id = dni_emp AND YEAR(fecha_contratacion) = YEAR(NOW()) LIMIT 1);
-            
-            IF salario_actual > salario_anterior THEN
-                SET aumento_salarial = 'Sí';
-                SET porcentaje_aumento = ROUND(((salario_actual - salario_anterior) / salario_anterior) * 100, 2);
-            ELSE
-                SET aumento_salarial = 'No';
-                SET porcentaje_aumento = 0;
-            END IF;
+    -- Verificar si ha cambiado el departamento
+    IF OLD.dpto_code != NEW.dpto_code THEN
+        SET dpto_actualizado = TRUE;
+    END IF;
 
-            -- Obtener los movimientos de departamento y puesto
-            SET movimientos_dpto = (SELECT COUNT(*) FROM contratos WHERE personal_id = dni_emp AND dpto_destino IS NOT NULL);
-            SET movimientos_puesto = (SELECT COUNT(*) FROM contratos WHERE personal_id = dni_emp AND puesto_destino IS NOT NULL);
+    -- Comprobar si el puesto ha sido actualizado en los logs hoy
+    IF puesto_actualizado THEN
+        SELECT id INTO puesto_en_logs
+        FROM logs 
+        WHERE dni = NEW.id AND campo_afectado = 'puesto' AND DATE(fecha) = CURRENT_DATE
+        LIMIT 1; -- Aseguramos que solo se seleccione una fila
+    END IF;
 
-            -- Insertar datos en la tabla temporal
-            INSERT INTO resumen (id_empleado, año, aumento_salarial, porcentaje_aumento, movimientos_departamento, movimientos_puesto)
-            VALUES (dni_emp, YEAR(fecha_contratacion), aumento_salarial, porcentaje_aumento, movimientos_dpto, movimientos_puesto);
+    -- Comprobar si el salario ha sido actualizado en los logs hoy
+    IF salario_actualizado THEN
+        SELECT id INTO salario_en_logs
+        FROM logs 
+        WHERE dni = NEW.id AND campo_afectado = 'salario' AND DATE(fecha) = CURRENT_DATE
+        LIMIT 1; -- Aseguramos que solo se seleccione una fila
+    END IF;
 
-            -- Actualizar salario_anterior para el siguiente año
-            SET salario_anterior = salario_actual;
+    -- Comprobar si el departamento ha sido actualizado en los logs hoy
+    IF dpto_actualizado THEN
+        SELECT id INTO dpto_en_logs
+        FROM logs 
+        WHERE dni = NEW.id AND campo_afectado = 'dpto' AND DATE(fecha) = CURRENT_DATE
+        LIMIT 1; -- Aseguramos que solo se seleccione una fila
+    END IF;
 
-            -- Avanzar al siguiente año
-            SET fecha_contratacion = DATE_ADD(fecha_contratacion, INTERVAL 1 YEAR);
-        END WHILE;
+    -- Si se actualizan salario, puesto y departamento
+    IF salario_actualizado AND puesto_actualizado AND dpto_actualizado THEN
+        -- Inserta en contratos
+        INSERT INTO contratos(fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
+        VALUES (NOW(), NEW.id, OLD.dpto_code, NEW.dpto_code, OLD.puesto, NEW.puesto, OLD.salario_bruto_anual, NEW.salario_bruto_anual);
 
-    END LOOP;
+        -- Insertar log
+        INSERT INTO logs (mensaje, campo_afectado, dni)
+        VALUES (CONCAT("Departamentos, puesto y salario actualizados."), 'Dpto, puesto y salario', NEW.id);
 
-    CLOSE empleados_cursor;
+    -- Si solo se actualiza salario
+    ELSEIF salario_actualizado THEN
+        -- Insertar en contratos
+        INSERT INTO contratos (fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
+        VALUES (NOW(), NEW.id, OLD.dpto_code, NEW.dpto_code, OLD.puesto, NEW.puesto, OLD.salario_bruto_anual, NEW.salario_bruto_anual);
 
-    -- Ahora los SELECT INTO deben estar dentro del bloque BEGIN
-    BEGIN
-        -- Calcular el porcentaje de reducción de líneas
-        SELECT COUNT(*) INTO total_contratos FROM contratos;
-        SELECT COUNT(*) INTO total_resumen FROM resumen;
+        -- Insertar log del cambio de salario
+        INSERT INTO logs (mensaje, campo_afectado, dni)
+        VALUES (CONCAT('Salario actualizado de ', OLD.salario_bruto_anual, ' a ', NEW.salario_bruto_anual), 'salario', NEW.id);
 
-        SET porcentaje_reduccion = ROUND(((total_contratos - total_resumen) / total_contratos) * 100, 2);
+    -- Si solo se actualiza puesto
+    ELSEIF puesto_actualizado THEN
+        -- Insertar en contratos
+        INSERT INTO contratos (fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
+        VALUES (NOW(), NEW.id, OLD.dpto_code, NEW.dpto_code, OLD.puesto, NEW.puesto, OLD.salario_bruto_anual, NEW.salario_bruto_anual);
 
-        -- Insertar la reducción en la tabla resumen
-        UPDATE resumen SET porcentaje_reduccion = porcentaje_reduccion;
-    END;
+        -- Insertar log del cambio de puesto
+        INSERT INTO logs (mensaje, campo_afectado, dni)
+        VALUES (CONCAT('Puesto actualizado de ', OLD.puesto, ' a ', NEW.puesto), 'puesto', NEW.id);
 
-    -- Devolver el porcentaje de reducción
-    RETURN porcentaje_reduccion;
+    -- Si solo se actualiza departamento
+    ELSEIF dpto_actualizado THEN
+        -- Insertar en contratos
+        INSERT INTO contratos (fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
+        VALUES (NOW(), NEW.id, OLD.dpto_code, NEW.dpto_code, OLD.puesto, NEW.puesto, OLD.salario_bruto_anual, NEW.salario_bruto_anual);
+
+        -- Insertar log del cambio de departamento
+        INSERT INTO logs (mensaje, campo_afectado, dni)
+        VALUES (CONCAT('Departamento actualizado de ', OLD.dpto_code, ' a ', NEW.dpto_code), 'dpto', NEW.id);
+    END IF;
 
 END $$
 
@@ -564,9 +530,6 @@ DELIMITER ;
 
 
 
-
-
-SELECT * FROM resumen();
 
 +------------------------------------------------+-------------------+
 |                   Tarea                        | Completado (✔/✘)  |
@@ -596,6 +559,17 @@ SELECT * FROM resumen();
 --Empezado actualizar salarios
 --Terminado actualizar salarios
 --Empezado resumen
+
+--01/04/2025
+--Resumen dejado en pausa
+--Empezados los triggers
+--"Reparado" el procedimiento cambiar después de hacer el primer trigger
+--"Reparado" el procedimiento actualizar_salarios después de hacer el primer trigger
+--"Reparado" el procedimiento despedir después de hacer el primer trigger
+--Los triggers han roto el procedimiento cambiar para cuando se cambia de puesto y departamento
+
+
+
 
 
 
