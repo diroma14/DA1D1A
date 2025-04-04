@@ -138,54 +138,57 @@ CALL contratar('Vegeta', '80846935A', 'Planeta Vegeta', '1986-08-29', 609876543,
 --Departamento
 CALL contratar('Yugi Muto', '26299110J', 'Oviedo', '1995-02-04', 620987654, 'Its time to duel', 'Maestro Duelista');
 
+
+
+
 -------------------------------------------------------------------------------------------------------
 
 ------------------------------------  Despedir -------------------------------------------------------
 
 DELIMITER $$
 
-CREATE OR REPLACE PROCEDURE despedir(dni VARCHAR(9))
+CREATE OR REPLACE PROCEDURE despedir(dni VARCHAR(15))
 BEGIN
-    DECLARE despedido DATE DEFAULT NULL;
-    DECLARE contratado VARCHAR(9) DEFAULT NULL;
-    DECLARE dpto_original VARCHAR(250);
-    DECLARE puesto_original VARCHAR(250);
-    DECLARE salario_original DOUBLE(10,5);
+    DECLARE fecha_actual DATE;
+    DECLARE dpto_original VARCHAR(100);
+    DECLARE puesto_original VARCHAR(100);
+    DECLARE salario_original DECIMAL(10, 2);
+    DECLARE despedido DATE;
 
-    /* Verificar si está contratado */
-    SELECT id INTO contratado 
-    FROM personal 
-    WHERE id = dni COLLATE utf8mb4_unicode_ci;
+    -- Obtener la fecha actual
+    SET fecha_actual = CURDATE();
+    
+    -- Verificar si el empleado ya ha sido despedido
+    SELECT fecha_despido INTO despedido
+    FROM personal
+    WHERE id = dni;
 
-    /* Verificar si no está despedido */
-    SELECT fecha_despido INTO despedido 
-    FROM personal 
-    WHERE id = dni COLLATE utf8mb4_unicode_ci;
-
-    IF contratado IS NULL THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'No hay ningún empleado con el dni que has introducido. Despido cancelado.';
+    IF despedido IS NOT NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ya se ha despedido a ese empleado. Despido cancelado.';
     ELSE
-        IF despedido IS NOT NULL THEN
-            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Ya se ha despedido a ese empleado. Despido cancelado.';
-        ELSE
-            /* Obtener el departamento, puesto y salario original */
-            SELECT dpto_destino, puesto_destino, salario_bruto_destino 
-            INTO dpto_original, puesto_original, salario_original 
-            FROM contratos 
-            WHERE personal_id = dni COLLATE utf8mb4_unicode_ci;
-
-            /* Actualizar los registros en personal */
-            UPDATE personal
-            SET fecha_despido = NOW(), salario_bruto_anual = 0, dpto_code = NULL, puesto = NULL
-            WHERE id = dni COLLATE utf8mb4_unicode_ci;
-        END IF;
+        /* Obtener el departamento, puesto y salario original */
+        SELECT dpto_destino, puesto_destino, salario_bruto_destino 
+        INTO dpto_original, puesto_original, salario_original 
+        FROM contratos 
+        WHERE personal_id = dni COLLATE utf8mb4_unicode_ci
+        LIMIT 1;  -- Seleccionamos solo el primer contrato si hay varios
+        
+        /* Actualizar los registros en personal */
+        UPDATE personal
+        SET fecha_despido = fecha_actual, salario_bruto_anual = 0, dpto_code = NULL, puesto = NULL
+        WHERE id = dni COLLATE utf8mb4_unicode_ci;
     END IF;
-END$$
+
+END $$
 
 DELIMITER ;
 
 
+
 CALL despedir('63416856Z');
+
+
+
 
 
 -------------------------------------------------------------------------------------------------------
@@ -430,98 +433,65 @@ CREATE OR REPLACE TABLE logs (
     dni VARCHAR(9)
 );
 
+-- Creación del trigger para registrar cambios
 DELIMITER $$
 
 CREATE OR REPLACE TRIGGER tg_actualizar_personal
-    AFTER UPDATE ON personal
-    FOR EACH ROW
+AFTER UPDATE ON personal
+FOR EACH ROW
 BEGIN
-    DECLARE puesto_actualizado BOOLEAN DEFAULT FALSE;
-    DECLARE dpto_actualizado BOOLEAN DEFAULT FALSE;
-    DECLARE salario_actualizado BOOLEAN DEFAULT FALSE;
-    DECLARE mensaje_log VARCHAR(255);
-    DECLARE puesto_en_logs INT DEFAULT 0;
-    DECLARE salario_en_logs INT DEFAULT 0;
-    DECLARE dpto_en_logs INT DEFAULT 0;
+    -- Comprobar si el salario ha cambiado
+    IF OLD.salario_bruto_anual != NEW.salario_bruto_anual OR NEW.salario_bruto_anual = 0 THEN
+        -- Comprobar si ya existe un log de salario hoy para este empleado
+        IF NOT EXISTS (
+            SELECT 1
+            FROM logs
+            WHERE dni = NEW.id AND campo_afectado = 'salario' AND DATE(fecha) = CURRENT_DATE
+        ) THEN
+            -- Insertar en contratos (si el salario cambió)
+            INSERT INTO contratos (fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
+            VALUES (NOW(), NEW.id, OLD.dpto_code, NEW.dpto_code, OLD.puesto, NEW.puesto, OLD.salario_bruto_anual, NEW.salario_bruto_anual);
 
-    -- Verificar si ha cambiado el salario
-    IF OLD.salario_bruto_anual != NEW.salario_bruto_anual THEN
-        SET salario_actualizado = TRUE;
+            -- Insertar log de cambio de salario
+            INSERT INTO logs (mensaje, campo_afectado, dni)
+            VALUES (CONCAT('Salario actualizado de ', IFNULL(OLD.salario_bruto_anual, 'desconocido'), ' a ', IFNULL(NEW.salario_bruto_anual, 'desconocido')), 'salario', NEW.id);
+        END IF;
     END IF;
 
-    -- Verificar si ha cambiado el puesto
-    IF OLD.puesto != NEW.puesto THEN
-        SET puesto_actualizado = TRUE;
+    -- Comprobar si el puesto ha cambiado
+    IF (OLD.puesto IS NULL AND NEW.puesto IS NOT NULL) OR (OLD.puesto IS NOT NULL AND NEW.puesto IS NULL) OR OLD.puesto != NEW.puesto THEN
+        -- Comprobar si ya existe un log de puesto hoy para este empleado
+        IF NOT EXISTS (
+            SELECT 1
+            FROM logs
+            WHERE dni = NEW.id AND campo_afectado = 'puesto' AND DATE(fecha) = CURRENT_DATE
+        ) THEN
+            -- Insertar en contratos (si el puesto cambió)
+            INSERT INTO contratos (fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
+            VALUES (NOW(), NEW.id, OLD.dpto_code, NEW.dpto_code, OLD.puesto, NEW.puesto, OLD.salario_bruto_anual, NEW.salario_bruto_anual);
+
+            -- Insertar log de cambio de puesto
+            INSERT INTO logs (mensaje, campo_afectado, dni)
+            VALUES (CONCAT('Puesto actualizado de ', IFNULL(OLD.puesto, 'desconocido'), ' a ', IFNULL(NEW.puesto, 'desconocido')), 'puesto', NEW.id);
+        END IF;
     END IF;
 
-    -- Verificar si ha cambiado el departamento
-    IF OLD.dpto_code != NEW.dpto_code THEN
-        SET dpto_actualizado = TRUE;
-    END IF;
+    -- Comprobar si el departamento ha cambiado
+    IF (OLD.dpto_code IS NULL AND NEW.dpto_code IS NOT NULL) OR (OLD.dpto_code IS NOT NULL AND NEW.dpto_code IS NULL) OR OLD.dpto_code != NEW.dpto_code THEN
+        -- Comprobar si ya existe un log de departamento hoy para este empleado
+        IF NOT EXISTS (
+            SELECT 1
+            FROM logs
+            WHERE dni = NEW.id AND campo_afectado = 'dpto' AND DATE(fecha) = CURRENT_DATE
+        ) THEN
+            -- Insertar en contratos (si el departamento cambió)
+            INSERT INTO contratos (fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
+            VALUES (NOW(), NEW.id, OLD.dpto_code, NEW.dpto_code, OLD.puesto, NEW.puesto, OLD.salario_bruto_anual, NEW.salario_bruto_anual);
 
-    -- Comprobar si el puesto ha sido actualizado en los logs hoy
-    IF puesto_actualizado THEN
-        SELECT id INTO puesto_en_logs
-        FROM logs 
-        WHERE dni = NEW.id AND campo_afectado = 'puesto' AND DATE(fecha) = CURRENT_DATE
-        LIMIT 1; -- Aseguramos que solo se seleccione una fila
-    END IF;
-
-    -- Comprobar si el salario ha sido actualizado en los logs hoy
-    IF salario_actualizado THEN
-        SELECT id INTO salario_en_logs
-        FROM logs 
-        WHERE dni = NEW.id AND campo_afectado = 'salario' AND DATE(fecha) = CURRENT_DATE
-        LIMIT 1; -- Aseguramos que solo se seleccione una fila
-    END IF;
-
-    -- Comprobar si el departamento ha sido actualizado en los logs hoy
-    IF dpto_actualizado THEN
-        SELECT id INTO dpto_en_logs
-        FROM logs 
-        WHERE dni = NEW.id AND campo_afectado = 'dpto' AND DATE(fecha) = CURRENT_DATE
-        LIMIT 1; -- Aseguramos que solo se seleccione una fila
-    END IF;
-
-    -- Si se actualizan salario, puesto y departamento
-    IF salario_actualizado AND puesto_actualizado AND dpto_actualizado THEN
-        -- Inserta en contratos
-        INSERT INTO contratos(fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
-        VALUES (NOW(), NEW.id, OLD.dpto_code, NEW.dpto_code, OLD.puesto, NEW.puesto, OLD.salario_bruto_anual, NEW.salario_bruto_anual);
-
-        -- Insertar log
-        INSERT INTO logs (mensaje, campo_afectado, dni)
-        VALUES (CONCAT("Departamentos, puesto y salario actualizados."), 'Dpto, puesto y salario', NEW.id);
-
-    -- Si solo se actualiza salario
-    ELSEIF salario_actualizado THEN
-        -- Insertar en contratos
-        INSERT INTO contratos (fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
-        VALUES (NOW(), NEW.id, OLD.dpto_code, NEW.dpto_code, OLD.puesto, NEW.puesto, OLD.salario_bruto_anual, NEW.salario_bruto_anual);
-
-        -- Insertar log del cambio de salario
-        INSERT INTO logs (mensaje, campo_afectado, dni)
-        VALUES (CONCAT('Salario actualizado de ', OLD.salario_bruto_anual, ' a ', NEW.salario_bruto_anual), 'salario', NEW.id);
-
-    -- Si solo se actualiza puesto
-    ELSEIF puesto_actualizado THEN
-        -- Insertar en contratos
-        INSERT INTO contratos (fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
-        VALUES (NOW(), NEW.id, OLD.dpto_code, NEW.dpto_code, OLD.puesto, NEW.puesto, OLD.salario_bruto_anual, NEW.salario_bruto_anual);
-
-        -- Insertar log del cambio de puesto
-        INSERT INTO logs (mensaje, campo_afectado, dni)
-        VALUES (CONCAT('Puesto actualizado de ', OLD.puesto, ' a ', NEW.puesto), 'puesto', NEW.id);
-
-    -- Si solo se actualiza departamento
-    ELSEIF dpto_actualizado THEN
-        -- Insertar en contratos
-        INSERT INTO contratos (fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen, salario_bruto_destino)
-        VALUES (NOW(), NEW.id, OLD.dpto_code, NEW.dpto_code, OLD.puesto, NEW.puesto, OLD.salario_bruto_anual, NEW.salario_bruto_anual);
-
-        -- Insertar log del cambio de departamento
-        INSERT INTO logs (mensaje, campo_afectado, dni)
-        VALUES (CONCAT('Departamento actualizado de ', OLD.dpto_code, ' a ', NEW.dpto_code), 'dpto', NEW.id);
+            -- Insertar log de cambio de departamento
+            INSERT INTO logs (mensaje, campo_afectado, dni)
+            VALUES (CONCAT('Departamento actualizado de ', IFNULL(OLD.dpto_code, 'desconocido'), ' a ', IFNULL(NEW.dpto_code, 'desconocido')), 'dpto', NEW.id);
+        END IF;
     END IF;
 
 END $$
@@ -529,6 +499,18 @@ END $$
 DELIMITER ;
 
 
+
+
+
+
+
+
+
+-- Creamos un nuevo empleado
+CALL contratar('Gandalf el Gris', '12345678A', 'Madrid', '1980-05-15', 654321987, 'i+d+i', 'Mago Supremo');
+-- Cambiamos el puesto del empleado "Gandalf el Gris" a "Consejero Supremo"
+CALL cambiar('12345678A', 'Consejero Supremo', NULL);
+CALL cambiar('12345678A', 'Gran Consejero', 'rrhh');
 
 
 +------------------------------------------------+-------------------+
@@ -567,6 +549,11 @@ DELIMITER ;
 --"Reparado" el procedimiento actualizar_salarios después de hacer el primer trigger
 --"Reparado" el procedimiento despedir después de hacer el primer trigger
 --Los triggers han roto el procedimiento cambiar para cuando se cambia de puesto y departamento
+
+--04/04/2025
+--Empezado los triggers desde cero
+--Los triggers siguen sin funcionar
+--El trigger solo funciona para una cosa en caso de varios cambios (por ejemplo si se cambia dpto y puesto solo guarda dpto)
 
 
 
