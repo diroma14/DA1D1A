@@ -19,7 +19,7 @@ BEGIN
     SELECT ROUND(c.precio_vida) INTO precio_ca
     FROM comunidades_autonomas c 
     INNER JOIN localidades l ON c.ca = l.ca 
-    WHERE l.localidad = localidadContrato COLLATE utf8mb4_unicode_ci;
+    WHERE l.localidad  = localidadContrato  LIMIT 1;
 
     -- La media del precio de vida
     SELECT ROUND(AVG(precio_vida)) INTO precio_pais 
@@ -183,14 +183,6 @@ END $$
 
 DELIMITER ;
 
-
-
-CALL despedir('63416856Z');
-
-
-
-
-
 -------------------------------------------------------------------------------------------------------
 
 ------------------------------------  Cambiar -------------------------------------------------------
@@ -205,13 +197,14 @@ BEGIN
     -- Verificar si existe el empleado
     SELECT nombre INTO existe_empleado 
     FROM personal 
-    WHERE id = dni COLLATE utf8mb4_unicode_ci 
+    WHERE id = dni 
+      AND fecha_despido IS NULL
     LIMIT 1;
 
     -- Verificar si existe el departamento 
     SELECT nombre INTO existe_dpto 
     FROM dptos 
-    WHERE dpto_code = dpto_nuevo COLLATE utf8mb4_unicode_ci 
+    WHERE dpto_code = dpto_nuevo 
     LIMIT 1;
 
     -- Si el empleado no existe
@@ -261,6 +254,7 @@ BEGIN
 END $$
 
 DELIMITER ;
+
 
 
 
@@ -361,43 +355,47 @@ BEGIN
     DECLARE salario_nuevo DECIMAL(10, 2);
     DECLARE dni_emp VARCHAR(9);
     DECLARE localidad_emp VARCHAR(250);
-    DECLARE cp_emp VARCHAR(10);
     DECLARE fecha_ultima_actualizacion DATE;
     DECLARE fecha_contratacion DATE;
     DECLARE años_contratado INT;
-    DECLARE done INT DEFAULT 0;
+    DECLARE salir INT DEFAULT 0;
 
+    -- Cursor para obtener los empleados con su salario y la fecha de última actualización
     DECLARE empleados_cursor CURSOR FOR 
-        SELECT id, salario_bruto_anual, fecha_ultima_actualizacion_salario, cp, fecha_contratacion
-        FROM personal
-        WHERE fecha_ultima_actualizacion_salario IS NULL
-           OR DATEDIFF(NOW(), fecha_ultima_actualizacion_salario) > 180;
+    SELECT p.id, p.salario_bruto_anual, p.fecha_ultima_actualizacion_salario, p.cp, p.fecha_contratacion
+    FROM personal p
+    WHERE (p.fecha_ultima_actualizacion_salario IS NULL 
+           OR TIMESTAMPDIFF(MONTH, p.fecha_ultima_actualizacion_salario, CURDATE()) > 6)
+      AND p.fecha_despido IS NULL;
 
-    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+    -- Controlador para cuando no haya más empleados
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET salir = 1;
 
     OPEN empleados_cursor;
 
     actualizar_salarios_loop: LOOP
-        FETCH empleados_cursor INTO dni_emp, salario_actual, fecha_ultima_actualizacion, cp_emp, fecha_contratacion;
+        FETCH empleados_cursor INTO dni_emp, salario_actual, fecha_ultima_actualizacion, localidad_emp, fecha_contratacion;
 
-        IF done THEN
+        -- Salir del bucle si no hay más empleados
+        IF salir THEN
             LEAVE actualizar_salarios_loop;
         END IF;
 
-        -- Obtenemos la localidad a partir del código postal
-        SELECT localidad
+        -- Obtener el nombre de la localidad a partir del código postal
+        SELECT l.localidad
         INTO localidad_emp
-        FROM localidades
-        WHERE cp = cp_emp
+        FROM localidades l
+        INNER JOIN personal p ON l.cp = p.cp 
+        WHERE l.cp = localidad_emp
         LIMIT 1;
 
         -- Calcular los años contratados
         SET años_contratado = TIMESTAMPDIFF(YEAR, fecha_contratacion, NOW());
 
-        -- Llamar a la función para calcular el nuevo salario
+        -- Llamar a la función calcular_salario para obtener el nuevo salario
         SET salario_nuevo = calcular_salario(localidad_emp, años_contratado);
 
-        -- Actualizar salario
+        -- Actualizar el salario en la tabla de empleados
         UPDATE personal
         SET salario_bruto_anual = salario_nuevo, 
             fecha_ultima_actualizacion_salario = NOW()
@@ -412,7 +410,11 @@ DELIMITER ;
 
 
 
+
+update personal set fecha_ultima_actualizacion_salario = "2000-01-01";
+update personal set salario_bruto_anual = 1000;
 CALL actualizar_salarios();
+
 
 -------------------------------------------------------------------------------------------------------
 
@@ -422,7 +424,7 @@ CALL actualizar_salarios();
 
 -------------------------------------------------------------------------------------------------------
 
-------------------------------------  Triggers  -------------------------------------------------------
+------------------------------------  Trigger actualizar_contratos  -------------------------------------------------------
 DELIMITER $$
 
 CREATE OR REPLACE TRIGGER actualizar_contratos
@@ -466,6 +468,28 @@ BEGIN
 END$$
 
 DELIMITER ;
+
+
+------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------  Trigger insertar contrato  -------------------------------------------------------
+
+DELIMITER $$
+
+CREATE TRIGGER insertar_contrato
+AFTER INSERT ON personal
+FOR EACH ROW
+BEGIN
+    INSERT INTO contratos (
+        fecha, personal_id, dpto_origen, dpto_destino, puesto_origen, puesto_destino, salario_bruto_origen,
+        salario_bruto_destino
+    )
+    VALUES (CURDATE(),NEW.id,NULL,NEW.dpto_code,NULL,NEW.puesto,NULL,NEW.salario_bruto_anual
+    );
+END$$
+
+DELIMITER ;
+
 
 UPDATE personal SET salario_bruto_anual = 50000, puesto="hola" WHERE id = '28924640R';
 
@@ -519,7 +543,7 @@ WHERE fecha = CURDATE();
 --Empezado calcular impuestos
 --Terminado calcular impuestos
 --Empezado actualizar salarios
---Terminado actualizar salarios
+--Terminado actualizar_salarios
 --Empezado resumen
 
 --01/04/2025
@@ -538,9 +562,13 @@ WHERE fecha = CURDATE();
 --07/04/2025
 --Empezado el trigger desde cero otra vez
 --He descubierto un fallo al actualizarSalarios, hace que todos los salarios actualizados tengan el mismo valor
---"Terminado el trigger de actualizar salarios"
+--"Terminado el trigger de actualizar personal"
 
-
+--08/04/2025
+-- No funciona actualizar_salarios XD, otra vez a corregirlo
+--Corregido en principio actualizar_salarios
+-- Creado y terminado el trigger insertar_contrato
+--Modificado actualizar-salarios y cambiar para que no actúe sobre empleados despedidos
 
 
 
