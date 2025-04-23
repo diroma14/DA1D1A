@@ -1,0 +1,49 @@
+inicio
+    //Iniciación variables
+    repetir {
+        mostrar menú;
+        preguntar opción;
+        leer opción;
+
+        según(opción){
+            caso opción1: //Sumar
+                pedir primer número;
+                pedir segundo número;
+                resultado = numero1+numero2;
+                imprimir resultado;
+            caso opción2:
+                pedir primer número;
+                pedir segundo número;
+                resultado = numero1-numero2;
+                imprimir resultado;
+            caso opción3:
+                pedir primer número;
+                pedir segundo número;
+                resultado= numero1 * numero2;
+                imprimir resultado;
+            caso opción4:
+                pedir primer número;
+                pedir segundo número;
+                resultado= numero1/numero2;
+                imprimir resultado;
+            caso opción5:
+                pedir primer número;
+                pedir segundo número;
+                resultado= numero1%numero2;
+                imprimir resultado;
+            caso opción6:
+                pedir numero;
+                si(numero%2 ==0){
+                    imprimir par;
+                }otro{
+                    imprimir impar;
+                }
+            caso opción7:
+                imprimir que se va a salir;
+                seguir=0;
+            defecto:
+                imprimir que se ha introducido una opción que no existe y se va a salir;
+                seguir=0;    
+        }
+    }mientras(seguir==1);
+fin
