@@ -1,9 +1,0 @@
-Línea 1
-Línea 2
-<<<<<<< HEAD
-Cambio en master línea A
-Cambio en master línea B
-=======
-Nueva línea 4
-Nueva línea 5
->>>>>>> actividad3
