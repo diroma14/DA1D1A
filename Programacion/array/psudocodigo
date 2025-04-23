@@ -1,0 +1,28 @@
+INICIO
+    declarar N
+
+    según valor N
+        valor N=1
+        imprimir "Lunes"
+
+        valor N=2
+        imprimir "Martes"
+
+        valor N=3
+        imprimir "Miércoles"
+
+        valor N=4
+        imprimir "Jueves"
+
+        valor N=5
+        imprimir "Viernes"
+
+        valor N=6
+        imprimir "Sábado"
+
+        valor N=7
+        imprimir "Domingo"
+    por defecto
+        imprimir "No válido"
+
+FIN
