@@ -1,8 +1,0 @@
-Un proceso está en estado preparado, listo o ejecutable cuando se encuentra en la
-memoria principal, sin operaciones de E/S pendientes, y apto para entrar en
-ejecución.
-El estado de ejecución o activo corresponde al proceso que en ese momento está
-siendo atendido por la CPU.
-Un proceso activo sale de estado de ejecución, cuando pasa a estado de bloqueado
-o el distribuidor le interrumpe.
-Hola
