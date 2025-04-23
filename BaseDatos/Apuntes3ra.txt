@@ -1,2 +1,0 @@
-Procedimientos acepta IN OUT
-Function acepta IN OUT(a partir de 10.8) retorna un valor
